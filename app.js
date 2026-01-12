@@ -1,5 +1,16 @@
 // --- 1. CONFIGURACIÓN Y DATOS INICIALES ---
 
+/*
+  PRUEBAS RÁPIDAS (instrucciones):
+  1) Login como Ingeniero -> crear cliente -> +Agregar aplicador -> crear tarea asignando ese aplicador.
+  2) Logout -> Login como Aplicador (mismo nombre) -> Verificar que sólo aparece el cliente asignado.
+  3) Como Ingeniero -> Abrir tarea -> Cambiar aplicador -> Verificar que el nuevo aplicador ve el cliente.
+
+  Nota: El sistema normaliza automáticamente nombres legacy a user-ids con
+  `normalizeAplicadoresForClient(cliente)` y persiste usuarios en `AGRO_USERS`.
+  Existe un helper opcional `window.runSmokeTests(client)` para pruebas (log de consola eliminado).
+*/
+
 // Tareas
 let DATA = JSON.parse(localStorage.getItem('AGRO_DATA')) || {
     "Estancia La Suiza": [],
@@ -19,10 +30,13 @@ let PERFIL = JSON.parse(localStorage.getItem('AGRO_PERFIL')) || {
     tanque: 3000
 };
 
-// Aplicadores por cliente (nombre simple por ahora)
+// Aplicadores por cliente (almacena ids de usuarios)
 let APLICADORES = JSON.parse(localStorage.getItem('AGRO_APLICADORES')) || {};
 
-let usuarioActual = { rol: "operario" };
+// Usuarios y sesión
+let USERS = JSON.parse(localStorage.getItem('AGRO_USERS')) || {}; // { id: {id,name,rol} }
+let SESSION = JSON.parse(localStorage.getItem('AGRO_SESSION')) || null;
+let usuarioActual = SESSION || { id: null, name: '', rol: 'operario' };
 let seleccion = { cliente: "", tarea: null, tabActual: "Nueva" };
 let pilaNavegacion = [];
 
@@ -32,6 +46,29 @@ function guardarTodo() {
     localStorage.setItem('AGRO_STOCK', JSON.stringify(STOCK_POR_CLIENTE));
     localStorage.setItem('AGRO_PERFIL', JSON.stringify(PERFIL));
     localStorage.setItem('AGRO_APLICADORES', JSON.stringify(APLICADORES));
+    localStorage.setItem('AGRO_USERS', JSON.stringify(USERS));
+    try { localStorage.setItem('AGRO_SESSION', JSON.stringify(usuarioActual)); } catch(e) {}
+}
+
+// Normalizar aplicadores: convertir valores legacy (nombres) en user-ids y crear usuarios si es necesario
+function normalizeAplicadoresForClient(cliente) {
+    if(!APLICADORES[cliente] || APLICADORES[cliente].length === 0) return [];
+    const lista = APLICADORES[cliente];
+    const newList = lista.map(item => {
+        if (USERS[item]) return item; // ya es id
+        // buscar usuario por nombre (case-insensitive)
+        const found = Object.values(USERS).find(u => u.name && u.name.toLowerCase() === String(item).toLowerCase());
+        if (found) return found.id;
+        // crear nuevo usuario con ese nombre
+        const id = 'u' + (Date.now() + Math.floor(Math.random()*999));
+        USERS[id] = { id, name: String(item), rol: 'operario' };
+        return id;
+    });
+    // deduplicar
+    const dedup = [...new Set(newList)];
+    APLICADORES[cliente] = dedup;
+    guardarTodo();
+    return dedup;
 }
 
 /* ===== Helpers de UI: modales simples (promesas) y utilidades ===== */
@@ -180,14 +217,21 @@ async function agregarAplicadorPrompt() {
     if(!seleccion.cliente) { await showAlert('Seleccione un cliente antes.'); return; }
     const nombre = await showPrompt('Nombre del aplicador:', 'Nombre Apellido');
     if(!nombre) return;
+    // Buscar usuario existente con rol operario
+    let user = Object.values(USERS).find(u => u.name.toLowerCase() === nombre.toLowerCase() && u.rol === 'operario');
+    if(!user) {
+        const id = 'u' + Date.now();
+        user = { id, name: nombre, rol: 'operario' };
+        USERS[id] = user;
+    }
     if(!APLICADORES[seleccion.cliente]) APLICADORES[seleccion.cliente] = [];
-    if(APLICADORES[seleccion.cliente].includes(nombre)) { await showAlert('Ese aplicador ya existe para este cliente.'); return; }
-    APLICADORES[seleccion.cliente].push(nombre);
+    if(APLICADORES[seleccion.cliente].includes(user.id)) { await showAlert('Ese aplicador ya existe para este cliente.'); return; }
+    APLICADORES[seleccion.cliente].push(user.id);
     guardarTodo();
     // actualizar select
     const sel = document.getElementById('new-task-aplicador');
-    const opt = document.createElement('option'); opt.value = nombre; opt.innerText = nombre; sel.appendChild(opt);
-    sel.value = nombre;
+    const opt = document.createElement('option'); opt.value = user.id; opt.innerText = user.name; sel.appendChild(opt);
+    sel.value = user.id;
 }
 
 
@@ -220,13 +264,13 @@ async function showSelectOption(message, options){
         const onBackdrop = () => { cleanup(); resolve(null); };
         const stopProp = (e) => e.stopPropagation();
 
-        // Opciones como botones
+        // Opciones como botones (si la opción corresponde a un user-id, mostrar su nombre)
         options.forEach(opt => {
             const b = document.createElement('button');
             b.className = 'btn-secondary';
             b.style.marginRight = '8px';
             b.style.marginBottom = '8px';
-            b.innerText = opt;
+            b.innerText = (USERS[opt] ? USERS[opt].name : opt);
             b.onclick = () => { cleanup(); resolve(opt); };
             inputBox.appendChild(b);
         });
@@ -258,17 +302,31 @@ async function showSelectOption(message, options){
 
 async function cambiarAplicador(){
     if(!seleccion.cliente || !seleccion.tarea) { await showAlert('No hay tarea seleccionada.'); return; }
+    // Asegurar que APLICADORES contiene ids
+    normalizeAplicadoresForClient(seleccion.cliente);
     const lista = APLICADORES[seleccion.cliente] || [];
     let elegido = null;
     if(lista.length === 0){
         const nombre = await showPrompt('No existen aplicadores para este cliente. Ingrese nombre para crear:', 'Nombre Apellido');
         if(!nombre) return;
-        APLICADORES[seleccion.cliente] = [nombre];
-        elegido = nombre;
+        // Crear o buscar usuario con rol aplicador
+        let user = Object.values(USERS).find(u => u.name.toLowerCase() === nombre.toLowerCase() && u.rol === 'operario');
+        if(!user) { const id = 'u' + Date.now(); user = { id, name: nombre, rol: 'operario' }; USERS[id] = user; }
+        APLICADORES[seleccion.cliente] = [user.id];
+        elegido = user.id;
     } else {
         const opt = await showSelectOption('Elija aplicador para esta tarea:', lista);
         if(!opt) return;
-        elegido = opt;
+        // opt puede ser id o nombre legacy — intentar resolver a id
+        let resolved = opt;
+        if(!USERS[opt]) {
+            const found = Object.values(USERS).find(u => u.name && u.name.toLowerCase() === String(opt).toLowerCase());
+            if(found) resolved = found.id;
+            else { // crear usuario
+                const id = 'u' + Date.now(); USERS[id] = { id, name: opt, rol: 'operario' }; resolved = id;
+            }
+        }
+        elegido = resolved;
         if(!APLICADORES[seleccion.cliente].includes(elegido)) APLICADORES[seleccion.cliente].push(elegido);
     }
 
@@ -277,8 +335,8 @@ async function cambiarAplicador(){
 
     const detBox = document.getElementById('det-aplicador-box');
     const detName = document.getElementById('det-aplicador-name');
-    if(seleccion.tarea.aplicador){ detBox.classList.remove('hidden'); detName.innerText = '👨‍🌾 ' + seleccion.tarea.aplicador; }
-    else { detBox.classList.add('hidden'); detName.innerText = ''; }
+    detBox.classList.remove('hidden');
+    detName.innerText = '👨‍🌾 ' + (USERS[elegido] ? USERS[elegido].name : elegido);
 
     // Re-renderizar lista de tareas y detalle
     cambiarTab(seleccion.tabActual);
@@ -319,9 +377,23 @@ function toggleMenu() {
 
 // --- 3. LOGIN Y MENÚ ---
 
-function login() {
-    usuarioActual.rol = document.getElementById('login-role').value;
-    document.getElementById('app-title-display').innerText = usuarioActual.rol === "ingeniero" ? "AgroControl (ING)" : "AgroControl";
+async function login() {
+    const name = document.getElementById('login-name').value.trim();
+    const role = document.getElementById('login-role').value;
+    if(!name) { await showAlert('Ingrese su nombre para continuar.'); return; }
+
+    // Buscar usuario existente por nombre+rol
+    let user = Object.values(USERS).find(u => u.name.toLowerCase() === name.toLowerCase() && u.rol === role);
+    if(!user) {
+        const id = 'u' + Date.now();
+        user = { id, name, rol: role };
+        USERS[id] = user;
+    }
+
+    usuarioActual = user;
+    guardarTodo();
+
+    document.getElementById('app-title-display').innerText = usuarioActual.name + (usuarioActual.rol === "ingeniero" ? " (ING)" : "");
     
     configurarMenu();
     renderClientes();
@@ -336,16 +408,24 @@ function login() {
 
 function configurarMenu() {
     const menu = document.getElementById('menu-options');
-    // textos sin emojis (evita problemas de encoding)
-    let html = '<button onclick="toggleMenu(); navegarA(\'screen-main\')">Mis Clientes</button>';
+    // texto con nombre de usuario y opciones
+    let html = '<div style="padding:8px 0; font-weight:bold;">' + (usuarioActual.name || (usuarioActual.rol === 'ingeniero' ? 'Ingeniero' : 'Aplicador')) + '</div>';
+    html += '<button onclick="toggleMenu(); navegarA(\'screen-main\')">Mis Clientes</button>';
 
     // Opción extra para operario
     if(usuarioActual.rol === "operario") {
         html += '<button onclick="irAPerfil()">Mi Máquina</button>';
     }
 
-    html += '<hr style="border:0; border-top:1px solid rgba(255,255,255,0.2); margin:10px 0;"></hr><button onclick="location.reload()" style="color:#ff8a80;">Cerrar Sesión</button>';
+    html += '<hr style="border:0; border-top:1px solid rgba(255,255,255,0.2); margin:10px 0;"></hr><button onclick="logout()" style="color:#ff8a80;">Cerrar Sesión</button>';
     menu.innerHTML = html;
+}
+
+function logout() {
+    usuarioActual = { id: null, name: '', rol: 'operario' };
+    localStorage.removeItem('AGRO_SESSION');
+    configurarMenu();
+    navegarA('screen-login');
 }
 
 // --- 4. GESTIÓN DE PERFIL (OPERARIO) ---
@@ -389,7 +469,17 @@ async function crearNuevoCliente() {
 function renderClientes() {
     const cont = document.getElementById('lista-clientes');
     cont.innerHTML = "";
-    Object.keys(DATA).forEach(c => {
+    let clientes = Object.keys(DATA);
+    // Normalizar aplicadores para todos los clientes (convierte nombres legacy en ids)
+    Object.keys(APLICADORES).forEach(c => normalizeAplicadoresForClient(c));
+    // Si es aplicador, mostrar solo clientes a los que está asignado por el ingeniero
+    if (usuarioActual && usuarioActual.rol === 'operario') {
+        clientes = clientes.filter(c => {
+            const list = APLICADORES[c] || [];
+            return list.some(a => String(a) === String(usuarioActual.id) || (USERS[a] && USERS[a].id === usuarioActual.id) || (String(a).toLowerCase() === String(usuarioActual.name).toLowerCase()));
+        });
+    }
+    clientes.forEach(c => {
         const div = document.createElement('div');
         div.className = "card";
         div.innerHTML = '<strong>' + c + '</strong><br><small>' + DATA[c].length + ' tareas registradas</small>'; 
@@ -416,8 +506,11 @@ function cambiarTab(estado) {
     const cont = document.getElementById('contenedor-tareas-tab');
     cont.innerHTML = "";
     
-    // Filtrar tareas por estado
-    const filtradas = DATA[seleccion.cliente].filter(t => t.estado === estado);
+    // Filtrar tareas por estado (si es aplicador, mostrar solo sus tareas asignadas)
+    let filtradas = DATA[seleccion.cliente].filter(t => t.estado === estado);
+    if (usuarioActual && usuarioActual.rol === 'operario') {
+        filtradas = filtradas.filter(t => t.aplicador && String(t.aplicador) === String(usuarioActual.id));
+    }
     
     if(filtradas.length === 0) {
         cont.innerHTML = '<p style="text-align:center; color:#999; margin-top:30px;">No hay tareas en esta sección.</p>'; 
@@ -427,11 +520,12 @@ function cambiarTab(estado) {
             div.className = "card";
             // Mostramos si es lote completo o parcial en la tarjeta
             const detalleHa = t.haTotal !== t.haAplicar ? '<span style="color:#d32f2f;">Parcial: ' + t.haAplicar + ' Ha</span>' : '<span>Lote: ' + t.haTotal + ' Ha</span>';
+            const aplicName = (t.aplicador && USERS[t.aplicador]) ? USERS[t.aplicador].name : t.aplicador;
             
             div.innerHTML = '<div class="task-row">' +
                                 '<div class="task-title">' +
                                     '<div><b>' + t.nombre + '</b></div>' +
-                                    (t.aplicador ? '<div class="task-aplicador">👨‍🌾 ' + t.aplicador + '</div>' : '') +
+                                    (aplicName ? '<div class="task-aplicador">👨‍🌾 ' + aplicName + '</div>' : '') +
                                     '<small>' + detalleHa + '</small>' +
                                 '</div>' +
                                 '<span class="task-badge badge-status status-' + t.estado.toLowerCase().replace(' ', '') + '">' + t.estado + '</span>' +
@@ -451,11 +545,14 @@ function prepararDetalle(tareaId) {
     seleccion.tarea = tarea;
     // Título
     document.getElementById('det-tarea-nombre').innerText = tarea.nombre;
-    // Aplicador en su propia caja
+    // Aplicador en su propia caja — mostrar siempre para permitir asignación por Ingeniero
     const detBox = document.getElementById('det-aplicador-box');
     const detName = document.getElementById('det-aplicador-name');
-    if (tarea.aplicador) { detBox.classList.remove('hidden'); detName.innerText = '👨‍🌾 ' + tarea.aplicador; }
-    else { detBox.classList.add('hidden'); detName.innerText = ''; }
+    detBox.classList.remove('hidden');
+    detName.innerText = tarea.aplicador ? ('👨‍🌾 ' + (USERS[tarea.aplicador] ? USERS[tarea.aplicador].name : tarea.aplicador)) : '(Sin asignar)';
+    // Mostrar u ocultar botón cambiar según rol
+    const changeBtn = document.querySelector('#det-aplicador-box .aplicador-actions .btn-secondary');
+    if(changeBtn) changeBtn.style.display = (usuarioActual && usuarioActual.rol === 'ingeniero') ? 'inline-block' : 'none';
 
     document.getElementById('det-tarea-desc').innerText = tarea.desc || "Sin observaciones.";
     document.getElementById('det-ha-total').innerText = tarea.haTotal;
@@ -540,10 +637,12 @@ function abrirNuevaTarea() {
     document.getElementById('new-task-ubic-desc').innerText = '(No definida)';
     document.getElementById('new-task-aplicador').innerHTML = '<option value="">(Sin asignar)</option>';
 
-    // Cargar aplicadores para este cliente
+    // Normalizar aplicadores (asegurar ids) y cargar aplicadores para este cliente
+    normalizeAplicadoresForClient(seleccion.cliente);
     const listaApp = APLICADORES[seleccion.cliente] || [];
     listaApp.forEach(a => {
-        const opt = document.createElement('option'); opt.value = a; opt.innerText = a;
+        const opt = document.createElement('option');
+        opt.value = a; opt.innerText = USERS[a] ? USERS[a].name : a;
         document.getElementById('new-task-aplicador').appendChild(opt);
     });
 
@@ -616,7 +715,25 @@ async function guardarNuevaTarea() {
         return;
     }
 
-    const aplicador = document.getElementById('new-task-aplicador').value || null;
+    // Convertir aplicador seleccionado (puede ser nombre legacy) en user-id y normalizar lista
+    let aplicadorRaw = document.getElementById('new-task-aplicador').value || null;
+    let aplicador = null;
+    if (aplicadorRaw) {
+        if (USERS[aplicadorRaw]) aplicador = aplicadorRaw;
+        else {
+            // intentar encontrar por nombre
+            const found = Object.values(USERS).find(u => u.name && u.name.toLowerCase() === String(aplicadorRaw).toLowerCase());
+            if(found) aplicador = found.id;
+            else {
+                const id = 'u' + Date.now();
+                USERS[id] = { id, name: aplicadorRaw, rol: 'operario' };
+                aplicador = id;
+                if(!APLICADORES[seleccion.cliente]) APLICADORES[seleccion.cliente] = [];
+                APLICADORES[seleccion.cliente].push(id);
+            }
+        }
+    }
+
     const ubicRaw = document.getElementById('new-task-ubic-desc').dataset.coords || null;
     let ubic = null;
     if (ubicRaw) {
@@ -634,6 +751,8 @@ async function guardarNuevaTarea() {
         aplicador,
         ubicacion: ubic
     });
+    // asegurar que aplicador almacenado está normalizado en APLICADORES
+    if (aplicador) normalizeAplicadoresForClient(seleccion.cliente);
     
     guardarTodo();
     verTareas(seleccion.cliente);
@@ -906,7 +1025,7 @@ async function runSmokeTests() {
 
     const remaining = (STOCK_POR_CLIENTE[client].find(i => i.n.toLowerCase() === 'glifosato') || { q: 0 }).q;
     await showAlert('Prueba completada. Stock restante de Glifosato: ' + remaining.toFixed(1) + ' Lts. Cliente: ' + client);
-    console.log('runSmokeTests finished for', client, 'remaining stock', remaining);
+    // Log eliminado intencionalmente para limpieza
 }
 
 // Exportar helper para ejecutar desde consola
