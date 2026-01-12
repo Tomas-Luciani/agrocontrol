@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AgroControl Pro</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2q6kQ1g8Q+fXw6bNwQKZrP3pJp3y5u1w2trY1hU=" crossorigin="" />
 </head>
 <body>
     <div class="app-container">
@@ -15,7 +17,7 @@
             <button class="btn-back-right" id="btn-volver" onclick="volverAtras()">← Volver</button>
         </header>
 
-        <div id="side-panel" class="side-panel hidden">
+        <div id="side-panel" class="side-panel">
             <div class="panel-header">
                 <h3>MENÚ</h3>
                 <button onclick="toggleMenu()" class="btn-close-menu">×</button>
@@ -102,6 +104,19 @@
                     <div id="lista-insumos-nueva"></div>
                     <button class="btn-secondary" onclick="agregarInsumoInput()" style="margin-top:10px;">+ Agregar Insumo</button>
                 </div>
+
+                <label>Aplicador</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select id="new-task-aplicador" style="flex:1;"></select>
+                    <button class="btn-secondary" onclick="agregarAplicadorPrompt()" style="width:140px;">+ Agregar aplicador</button>
+                </div>
+
+                <label>Ubicación del Lote</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn-secondary" onclick="abrirSelectorUbicacion()">Seleccionar ubicación</button>
+                    <span id="new-task-ubic-desc" style="color:#666;">(No definida)</span>
+                </div>
+
                 <button class="btn-primary" onclick="guardarNuevaTarea()" style="margin-top:20px;">CREAR ORDEN</button>
             </div>
         </section>
@@ -110,6 +125,12 @@
             <div class="task-header-row">
                 <h2 id="det-tarea-nombre">---</h2>
                 <span id="det-tarea-estado-badge" class="badge-status">---</span>
+            </div>
+            <div id="det-aplicador-box" class="info-box hidden" style="margin-top:12px;">
+                <div class="aplicador-name" id="det-aplicador-name">---</div>
+                <div class="aplicador-actions">
+                    <button class="btn-secondary" onclick="cambiarAplicador()">Cambiar aplicador</button>
+                </div>
             </div>
             <div class="task-detail-card">
                 <div class="info-box" style="display: flex; justify-content: space-between; align-items: center;">
@@ -124,6 +145,11 @@
                 </div>
                 <div class="info-box"><p id="det-tarea-desc" style="font-size:14px;"></p></div>
                 <div class="info-box"><h4>🧪 Receta Planificada</h4><ul id="det-receta-lista" class="product-list"></ul></div>
+                <div class="info-box" id="det-ubicacion-box">
+                    <h4>📍 Ubicación del Lote</h4>
+                    <div id="det-map" style="height:200px; border-radius:8px; overflow:hidden;"></div>
+                    <div id="det-weather" style="margin-top:8px; color:#444;"></div>
+                </div>
             </div>
             <div class="action-buttons-group">
                 <button class="btn-calc-big" onclick="abrirCalculadora()">🧮 CALCULADORA DE CARGAS</button>
@@ -180,6 +206,21 @@
         </section>
 
     </div>
+    <!-- Modal global -->
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" role="document">
+            <h3 class="modal-title"></h3>
+            <div class="modal-body"></div>
+            <div class="modal-input" style="margin-top:10px;"></div>
+            <div class="modal-buttons" style="margin-top:15px; display:flex; gap:10px; justify-content:flex-end;">
+                <button class="btn-secondary btn-modal-cancel">Cancelar</button>
+                <button class="btn-primary btn-modal-ok">Aceptar</button>
+            </div>
+        </div>
+    </div>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o9N1j7k8mXk8A3zV0UuT0gQF/9/1Z5m6Y2vZr8+gGJg=" crossorigin=""></script>
     <script src="app.js"></script>
 </body>
 </html>
