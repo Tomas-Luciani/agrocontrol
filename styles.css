@@ -51,8 +51,19 @@ body { background: #1a1a1a; font-family: -apple-system, sans-serif; display: fle
 
 #det-map { min-height: 160px; }
 
+/* KPI CARDS */
+.kpi-card { box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s, box-shadow 0.2s; }
+.kpi-card:hover { transform: translateY(-4px); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
 
+/* CONEXIÓN INDICATOR */
+#conexion-indicator { min-width: 120px; text-align: center; }
 
+@keyframes slideIn { from { opacity: 0; transform: translateX(400px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(400px); } }
+
+/* NOTIFICACIONES */
+.notif-toast { word-wrap: break-word; }
+#notificaciones-container { pointer-events: auto; }
 
 /* ESTADOS */
 .badge-status { padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
