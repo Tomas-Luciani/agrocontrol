@@ -14,7 +14,10 @@
         <header class="app-top-bar hidden" id="main-header">
             <button class="btn-sandwich" onclick="toggleMenu()">☰</button>
             <div class="header-title" id="app-title-display">AgroControl</div>
-            <button class="btn-back-right" id="btn-volver" onclick="volverAtras()">← Volver</button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <small id="conexion-indicator" style="font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 20px; background: #e8f5e9;">🟢 En línea</small>
+                <button class="btn-back-right" id="btn-volver" onclick="volverAtras()">← Volver</button>
+            </div>
         </header>
 
         <div id="side-panel" class="side-panel">
@@ -102,6 +105,11 @@
                 <label>Instrucciones Técnicas</label>
                 <textarea id="new-task-desc-input" placeholder="Observaciones..."></textarea>
                 
+                <label>📷 Fotografías de Referencia (Opcional)</label>
+                <input type="file" id="new-task-fotos" accept="image/*" multiple style="margin-bottom: 0;">
+                <small style="color:#666; display:block; margin-top:6px;">Puedes agregar una o más fotos del lote como referencia.</small>
+                <div id="preview-fotos-nueva" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px;"></div>
+                
                 <div class="receta-form-box">
                     <h4>🧪 Receta (Dosis por Ha)</h4>
                     <div id="lista-insumos-nueva"></div>
@@ -116,8 +124,8 @@
 
                 <label>Ubicación del Lote</label>
                 <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn-secondary" onclick="abrirSelectorUbicacion()">Seleccionar ubicación</button>
-                    <span id="new-task-ubic-desc" style="color:#666;">(No definida)</span>
+                    <button type="button" class="btn-secondary" onclick="abrirSelectorUbicacion()" style="flex:1;">📍 Seleccionar ubicación</button>
+                    <span id="new-task-ubic-desc" style="color:#666; white-space:nowrap;">(No definida)</span>
                 </div>
 
                 <button class="btn-primary" onclick="guardarNuevaTarea()" style="margin-top:20px;">CREAR ORDEN</button>
@@ -132,7 +140,7 @@
             <div id="det-aplicador-box" class="info-box hidden" style="margin-top:12px;">
                 <div class="aplicador-name" id="det-aplicador-name">---</div>
                 <div class="aplicador-actions">
-                    <button class="btn-secondary" onclick="cambiarAplicador()">Cambiar aplicador</button>
+                    <button type="button" class="btn-secondary" onclick="abrirGestorAplicadores()">Cambiar aplicador</button>
                 </div>
             </div>
             <div class="task-detail-card">
@@ -148,6 +156,10 @@
                 </div>
                 <div class="info-box"><p id="det-tarea-desc" style="font-size:14px;"></p></div>
                 <div class="info-box"><h4>🧪 Receta Planificada</h4><ul id="det-receta-lista" class="product-list"></ul></div>
+                <div class="info-box" id="det-fotos-box" style="display:none;">
+                    <h4>📷 Fotografías de Referencia</h4>
+                    <div id="det-fotos-galeria" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px;"></div>
+                </div>
                 <div class="info-box" id="det-ubicacion-box">
                     <h4>📍 Ubicación del Lote</h4>
                     <div id="det-map" style="height:200px; border-radius:8px; overflow:hidden;"></div>
@@ -204,8 +216,113 @@
                 <label>Observaciones Finales</label>
                 <textarea id="clima-obs" placeholder="Comentarios del aplicador (clima, problemas, etc)..."></textarea>
                 
-                <button class="btn-primary" onclick="finalizarDefinitivo()">CONFIRMAR Y DESCONTAR STOCK</button>
+                <label>📷 Fotografías de Cierre (Opcional)</label>
+                <input type="file" id="fotos-finalizacion" accept="image/*" multiple style="margin-bottom: 0;">
+                <small style="color:#666; display:block; margin-top:6px;">Agrega fotos del trabajo finalizado como comprobante.</small>
+                <div id="preview-fotos-finalizacion" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px;"></div>
+                
+                <button class="btn-primary" onclick="finalizarDefinitivo()" style="margin-top:20px;">CONFIRMAR Y DESCONTAR STOCK</button>
             </div>
+        </section>
+
+        <section id="screen-ubicacion-selector" class="pantalla hidden">
+            <h2>Seleccionar Ubicación del Lote</h2>
+            <p style="font-size:13px; color:#666; margin-bottom:12px;">Toque en el mapa para marcar el punto del lote.</p>
+            <div id="ubicacion-map" style="height: 400px; border-radius: 12px; border: 1px solid #ddd; margin-bottom: 15px;"></div>
+            <div class="info-box" style="background:#e8f5e9; border: 1px solid #2e7d32;">
+                <p id="ubicacion-coords" style="font-size: 13px; color: #2e7d32;">Coordenadas: <b>(No seleccionadas)</b></p>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button type="button" class="btn-secondary" onclick="volverAtras()" style="flex:1;">Cancelar</button>
+                <button type="button" id="btn-confirmar-ubicacion" class="btn-primary" style="flex:1;" onclick="confirmarUbicacion()" disabled>Confirmar</button>
+            </div>
+        </section>
+
+        <section id="screen-aplicadores-manager" class="pantalla hidden">
+            <h2>Gestionar Aplicadores</h2>
+            <p style="font-size:13px; color:#666; margin-bottom:15px;">Cliente: <b id="aplicadores-cliente-nombre"></b></p>
+            
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="buscar-aplicador-input" placeholder="Buscar o crear aplicador..." style="margin-bottom: 0;">
+                <small style="color:#666; display:block; margin-top:6px;">Escriba el nombre del aplicador. Si existe, se selecciona. Si no, se crea uno nuevo.</small>
+            </div>
+
+            <div id="lista-aplicadores-existentes" style="margin-bottom: 20px;">
+                <h4 style="color:#666; font-size:13px; margin-bottom:10px;">Aplicadores Actuales</h4>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn-secondary" onclick="volverAtras()" style="flex:1;">Cancelar</button>
+                <button type="button" id="btn-aplicador-confirmar" class="btn-primary" style="flex:1;" onclick="confirmarSeleccionAplicador()" disabled>Confirmar Selección</button>
+            </div>
+        </section>
+
+        <section id="screen-historial" class="pantalla hidden">
+            <h2>Historial de Tareas</h2>
+            <p style="font-size:13px; color:#666; margin-bottom:15px;">Registro completo de todas las tareas completadas.</p>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap;">
+                <select id="historial-filtro-cliente" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+                    <option value="">Todos los clientes</option>
+                </select>
+                <button type="button" class="btn-secondary" onclick="exportarExcel()" style="flex: 0 1 auto; margin-bottom: 0;">📊 Excel</button>
+                <button type="button" class="btn-secondary" onclick="exportarPDF()" style="flex: 0 1 auto; margin-bottom: 0;">📄 PDF</button>
+                <button type="button" class="btn-secondary" onclick="limpiarFiltrosHistorial()" style="flex: 0 1 auto; margin-bottom: 0;">Limpiar</button>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                <input type="date" id="historial-fecha-desde" style="flex: 1; margin-bottom: 0;">
+                <input type="date" id="historial-fecha-hasta" style="flex: 1; margin-bottom: 0;">
+            </div>
+
+            <div id="contenedor-historial" style="padding-bottom: 80px;"></div>
+        </section>
+
+        <section id="screen-dashboard" class="pantalla hidden">
+            <h2>📊 Dashboard de Control</h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                <div class="kpi-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 18px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                    <small style="opacity: 0.9;">Tareas Totales</small>
+                    <div style="font-size: 28px; font-weight: bold; margin-top: 8px;" id="kpi-tareas-totales">0</div>
+                    <small style="opacity: 0.85; margin-top: 6px; display: block;" id="kpi-tareas-desglose"></small>
+                </div>
+                
+                <div class="kpi-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 18px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                    <small style="opacity: 0.9;">Hectáreas Aplicadas</small>
+                    <div style="font-size: 28px; font-weight: bold; margin-top: 8px;" id="kpi-hectareas-aplicadas">0 Ha</div>
+                    <small style="opacity: 0.85; margin-top: 6px; display: block;" id="kpi-hectareas-porcentaje"></small>
+                </div>
+                
+                <div class="kpi-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 18px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                    <small style="opacity: 0.9;">Stock Total</small>
+                    <div style="font-size: 28px; font-weight: bold; margin-top: 8px;" id="kpi-stock-total">0 Lts</div>
+                    <small style="opacity: 0.85; margin-top: 6px; display: block;" id="kpi-stock-estado"></small>
+                </div>
+                
+                <div class="kpi-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: #333; padding: 18px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                    <small style="opacity: 0.8;">Aplicadores Activos</small>
+                    <div style="font-size: 28px; font-weight: bold; margin-top: 8px;" id="kpi-aplicadores">0</div>
+                    <small style="opacity: 0.75; margin-top: 6px; display: block;" id="kpi-aplicadores-promedio"></small>
+                </div>
+            </div>
+
+            <div class="info-box" style="margin-bottom: 15px;">
+                <h4>Resumen por Cliente</h4>
+                <div id="resumen-clientes" style="margin-top: 12px;"></div>
+            </div>
+
+            <div class="info-box">
+                <h4>⚠️ Alertas Críticas</h4>
+                <div id="alertas-criticas" style="margin-top: 12px;"></div>
+            </div>
+        </section>
+
+        <section id="screen-aplicadores-stats" class="pantalla hidden">
+            <h2>👥 Equipo de Aplicadores</h2>
+            <p style="font-size:13px; color:#666; margin-bottom:15px;">Estadísticas y desempeño del equipo.</p>
+            
+            <div id="lista-aplicadores-stats" style="padding-bottom: 80px;"></div>
         </section>
 
     </div>
@@ -220,6 +337,15 @@
                 <button class="btn-secondary btn-modal-cancel">Cancelar</button>
                 <button class="btn-primary btn-modal-ok">Aceptar</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal para imágenes -->
+    <div id="modal-imagen" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-backdrop" onclick="cerrarImagenGrande()"></div>
+        <div style="position: relative; width: 90%; max-width: 500px; margin: auto;">
+            <button style="position: absolute; top: -40px; right: 0; background: white; border: none; font-size: 28px; cursor: pointer; color: #333;" onclick="cerrarImagenGrande()">✕</button>
+            <img id="modal-imagen-src" src="" style="width: 100%; border-radius: 12px; max-height: 80vh; object-fit: contain;">
         </div>
     </div>
     <!-- Leaflet JS -->
